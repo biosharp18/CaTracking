@@ -4,10 +4,12 @@ import numpy as np;
 import matplotlib.pyplot as plt
 from scipy import ndimage
 from typing import Tuple, List
-import os
-import re
+import time
+# import os
+# import re2
 
 file_dir = "/Users/huayinluo/Desktop/code/CaTracking" # change to your directory
+video_num = "11433" # change to video num 
 
 def get_frame_coords(frame: int, neuron_allframes: List) -> List:
     """ Returns coords of neuron at given frame
@@ -22,27 +24,29 @@ def get_frame_coords(frame: int, neuron_allframes: List) -> List:
     return (np.ceil(neuron_allframes[frame,:])).astype(int)
 
 def crop_image(imgs: List, frame: int, channel: int, position: Tuple[int, int], crop_size: int) -> List:
-    """ Returns cropped grayscale image
+    """ Returns cropped grayscale image of given frame and video
 
     Parameters:
+    imgs: 2 channel video
     frame: frame number
+    channel: channel number
     position: (x,y) coord of neuron
-    crop_size: (crop height, crop width)
+    crop_size: crop size
 
     Returns:
     img: image in two dimension array (width, height)
     """
     (img_y, img_x) = imgs[frame, channel, :, :].shape # image dimensionss
     # avoid cropping out of bounds
-    img = imgs[frame,
+    gray_img = imgs[frame,
                 channel,
                 max(position[1]-crop_size, 0):min(position[1]+crop_size+1, img_y), # height (top:bottom)
                 max(position[0]-crop_size, 0):min(position[0]+crop_size+1, img_x) # width (left:right)
                 ]
-    return img
+    return gray_img
 
 def draw_circle(img: List, thres_img: List, position: List) -> List:
-    """ Draw circle around neuron
+    """ Blob detect neuron and draw circle around
 
     Parameters:
     img: image to draw circle on
@@ -77,66 +81,72 @@ def draw_circle(img: List, thres_img: List, position: List) -> List:
     return im_with_keypoints
             
 # Load Data
-imgs = np.load("11408_crop.nd2.npy")
-ava = np.load("AVA_11408.mat.npy")
-avb = np.load("AVB_11408.mat.npy")
+imgs = np.load(f"{video_num}_crop.nd2.npy")
+ava = np.load(f"AVA_{video_num}.mat.npy")
+avb = np.load(f"AVB_{video_num}.mat.npy")
 
-start_frame = 0 #imgs.shape[0]
-end_frame = 201
+start_frame = 0
+end_frame = 5 # imgs.shape[0]
 print(f"{end_frame-start_frame} frames")
-channel = 0
-(img_y, img_x) = imgs[0, 0, :, :].shape
 
-crop_size = 10
+(img_y, img_x) = imgs[0, 0, :, :].shape # dimensions
+channel = 1
+crop_size = 6
 thres = 50
+suffix = ""
 
 crop = True # to skip cropping, set to False
-blob = True # to skip blob detection, set to False
+blob = False # to skip blob detection, set to False
 save = True # to save as npy file, set to True
 
 # Crop Images
 if crop:
     print("Start Cropping")
+    start_crop = time.time()
     try:
+        i = 0
         for frame in range(start_frame, end_frame):
-            # save original image (to check manually against final product)
-            plt.imsave(f'{file_dir}/og_imgs/{frame}.png', imgs[frame,0,:,:], cmap="gray")
 
             # neuron positions
             position_a = get_frame_coords(frame, ava)
             position_b= get_frame_coords(frame, avb)
             
-            # crop image & save
-            img_a = crop_image(imgs, frame, channel, position_a, crop_size)
-            img_b = crop_image(imgs, frame, channel, position_b, crop_size)
+            # # crop image & save
+            # img_a = crop_image(imgs, frame, channel, position_a, crop_size)
+            # img_b = crop_image(imgs, frame, channel, position_b, crop_size)
             
-            plt.imsave(f'{file_dir}/cropped_imgs/{frame}a.png', img_a, cmap="gray")
-            plt.imsave(f'{file_dir}/cropped_imgs/{frame}b.png', img_b, cmap="gray") 
+            # plt.imsave(f'{file_dir}/cropped_imgs/{video_num}/{frame}a{suffix}.png', img_a, cmap="gray")
+            # plt.imsave(f'{file_dir}/cropped_imgs/{video_num}/{frame}b{suffix}.png', img_b, cmap="gray") 
                    
-            print(f"------- cropped frame {frame}-------")
+            # print(f"------- cropped frame {frame}-------")
+            
+            # save original image (to check manually against final product)
+            plt.imsave(f'{file_dir}/original/{video_num}/{frame}{suffix}.png', imgs[frame,0,:,:])
     except Exception as e:
         print(f"error cropping frame {frame}")
         print(e)
         pass
     print("End Cropping")
+    print(f"Crop Time for {end_frame} frames: {time.time()-start_crop}")
 
 
-# Blob Detection
+# Threshold Image
 if blob:
     print("Start Blob Detection")
+    start_blob = time.time()
     npy_imgs=[]
     for frame in range(start_frame, end_frame):
         # Read images        
-        img_gray_a = cv2.imread(f"{file_dir}/cropped_imgs/{frame}a.png")
-        img_gray_b = cv2.imread(f"{file_dir}/cropped_imgs/{frame}b.png") 
+        img_gray_a = cv2.imread(f"{file_dir}/cropped_imgs/{video_num}/{frame}a{suffix}.png")
+        img_gray_b = cv2.imread(f"{file_dir}/cropped_imgs/{video_num}/{frame}b{suffix}.png") 
         
         # Threshold image
         ret_a, thres_img_a = cv2.threshold(img_gray_a, thres, 255, cv2.THRESH_BINARY)
         ret_b, thres_img_b = cv2.threshold(img_gray_b, thres, 255, cv2.THRESH_BINARY)     
         
         # Save threshold images
-        plt.imsave(f'{file_dir}/thres_imgs/{frame}a.png', thres_img_a) # save threshold image
-        plt.imsave(f'{file_dir}/thres_imgs/{frame}b.png', thres_img_b)
+        plt.imsave(f'{file_dir}/thres_imgs/{video_num}/{frame}a.png', thres_img_a) # save threshold image
+        plt.imsave(f'{file_dir}/thres_imgs/{video_num}/{frame}b.png', thres_img_b)
         
         full_img = np.zeros((img_y, img_x, 3))
         (xa, ya) = get_frame_coords(frame, ava)
@@ -150,11 +160,15 @@ if blob:
             row_b[max(xb-crop_size, 0):min(xb+crop_size+1, img_x)] = thres_img_b[i]
             
         norm_full_img = cv2.normalize(src=full_img, dst=None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        plt.imsave(f'{file_dir}/full_imgs/{frame}.png', norm_full_img )
+        plt.imsave(f'{file_dir}/masked/{video_num}/{frame}{suffix}.png', norm_full_img )
         npy_imgs.append(norm_full_img)
         print(f"-------finished frame {frame}-------")
     if save:
         imgset=np.array(npy_imgs)
-        np.save("imgds.npy",imgset)       
+        np.save(f"allimgs_{video_num}.npy",imgset)       
     print("Finished!")
+    print(f"Threshold Time for {end_frame} frames: {time.time()-start_blob}")
+    # print(f"Total time: {time.time()-start_crop}")
+
     
+# Check Image
